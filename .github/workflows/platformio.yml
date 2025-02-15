@@ -36,19 +36,23 @@ jobs:
 
       - id: set-matrix
         run: |
+          ENVIRONMENTS=()
+          
           if [[ "${{ steps.changes.outputs.target1 }}" == "true" ]] || [[ "${{ steps.changes.outputs.common }}" == "true" ]]; then
-            ENVIRONMENTS="target1"
+            ENVIRONMENTS+=("\"target1\"")
           fi
           if [[ "${{ steps.changes.outputs.target2 }}" == "true" ]] || [[ "${{ steps.changes.outputs.common }}" == "true" ]]; then
-            ENVIRONMENTS="${ENVIRONMENTS:+$ENVIRONMENTS,}target2"
+            ENVIRONMENTS+=("\"target2\"")
           fi
           
           # If no specific changes detected, build all targets
-          if [ -z "$ENVIRONMENTS" ]; then
-            ENVIRONMENTS="target1,target2"
+          if [ ${#ENVIRONMENTS[@]} -eq 0 ]; then
+            ENVIRONMENTS=("\"target1\"" "\"target2\"")
           fi
           
-          echo "matrix={\"environment\":[${ENVIRONMENTS}]}" >> $GITHUB_OUTPUT
+          # Join array elements with commas
+          IFS=,
+          echo "matrix={\"environment\":[${ENVIRONMENTS[*]}]}" >> $GITHUB_OUTPUT
 
   build:
     needs: detect-changes
