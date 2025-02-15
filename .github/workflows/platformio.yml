@@ -16,8 +16,8 @@ jobs:
     steps:
       - uses: actions/checkout@v3
         with:
-          fetch-depth: 0  # Fetch all history for file changes detection
-          
+          fetch-depth: 0
+
       - name: Detect file changes
         id: changes
         uses: dorny/paths-filter@v2
@@ -36,29 +36,25 @@ jobs:
 
       - id: set-matrix
         run: |
-          ENVIRONMENTS=()
-          
-          # Check if target specific or common files changed
           if [[ "${{ steps.changes.outputs.target1 }}" == "true" ]] || [[ "${{ steps.changes.outputs.common }}" == "true" ]]; then
-            ENVIRONMENTS+=("target1")
+            ENVIRONMENTS="target1"
           fi
           if [[ "${{ steps.changes.outputs.target2 }}" == "true" ]] || [[ "${{ steps.changes.outputs.common }}" == "true" ]]; then
-            ENVIRONMENTS+=("target2")
+            ENVIRONMENTS="${ENVIRONMENTS:+$ENVIRONMENTS,}target2"
           fi
           
           # If no specific changes detected, build all targets
-          if [ ${#ENVIRONMENTS[@]} -eq 0 ]; then
-            ENVIRONMENTS=("target1" "target2")
+          if [ -z "$ENVIRONMENTS" ]; then
+            ENVIRONMENTS="target1,target2"
           fi
           
-          echo "matrix=$(json_array "${ENVIRONMENTS[@]}")" >> $GITHUB_OUTPUT
+          echo "matrix={\"environment\":[${ENVIRONMENTS}]}" >> $GITHUB_OUTPUT
 
   build:
     needs: detect-changes
     runs-on: ubuntu-latest
     strategy:
-      matrix:
-        environment: ${{fromJson(needs.detect-changes.outputs.matrix)}}
+      matrix: ${{fromJson(needs.detect-changes.outputs.matrix)}}
 
     steps:
       - uses: actions/checkout@v3
@@ -89,9 +85,8 @@ jobs:
       - name: Prepare artifacts
         run: |
           mkdir -p artifacts
-          cp .pio/build/${{ matrix.environment }}/*.bin artifacts/
-          cp .pio/build/${{ matrix.environment }}/*.elf artifacts/
-          # Add any other files you want to include in the release
+          cp .pio/build/${{ matrix.environment }}/*.bin artifacts/ || true
+          cp .pio/build/${{ matrix.environment }}/*.elf artifacts/ || true
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v3
