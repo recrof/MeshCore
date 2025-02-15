@@ -1,118 +1,131 @@
-name: PlatformIO CI/CD
+name: Build and Release
 
 on:
   push:
-    branches: [ main, master ]
-    tags:
-      - 'v*'
+    branches: [ main ]
   pull_request:
-    branches: [ main, master ]
+    branches: [ main ]
+  workflow_dispatch:
 
 jobs:
-  detect-changes:
-    runs-on: ubuntu-latest
-    outputs:
-      matrix: ${{ steps.set-matrix.outputs.matrix }}
-    steps:
-      - uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
-
-      - name: Detect file changes
-        id: changes
-        uses: dorny/paths-filter@v2
-        with:
-          filters: |
-            target1:
-              - 'src/target1/**'
-              - 'platformio.ini'
-            target2:
-              - 'src/target2/**'
-              - 'platformio.ini'
-            common:
-              - 'lib/**'
-              - 'include/**'
-              - 'platformio.ini'
-
-      - id: set-matrix
-        run: |
-          ENVIRONMENTS=()
-          
-          if [[ "${{ steps.changes.outputs.target1 }}" == "true" ]] || [[ "${{ steps.changes.outputs.common }}" == "true" ]]; then
-            ENVIRONMENTS+=("\"target1\"")
-          fi
-          if [[ "${{ steps.changes.outputs.target2 }}" == "true" ]] || [[ "${{ steps.changes.outputs.common }}" == "true" ]]; then
-            ENVIRONMENTS+=("\"target2\"")
-          fi
-          
-          # If no specific changes detected, build all targets
-          if [ ${#ENVIRONMENTS[@]} -eq 0 ]; then
-            ENVIRONMENTS=("\"target1\"" "\"target2\"")
-          fi
-          
-          # Join array elements with commas
-          IFS=,
-          echo "matrix={\"environment\":[${ENVIRONMENTS[*]}]}" >> $GITHUB_OUTPUT
-
   build:
-    needs: detect-changes
     runs-on: ubuntu-latest
-    strategy:
-      matrix: ${{fromJson(needs.detect-changes.outputs.matrix)}}
 
     steps:
-      - uses: actions/checkout@v3
-      
-      - name: Cache PlatformIO
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.platformio
-            .pio
-          key: ${{ runner.os }}-pio-${{ hashFiles('**/platformio.ini') }}
-          restore-keys: |
-            ${{ runner.os }}-pio-
+    - uses: actions/checkout@v3
+      with:
+        fetch-depth: 0  # Fetch all history for file changes detection
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.x'
+    - name: Cache PlatformIO
+      uses: actions/cache@v3
+      with:
+        path: ~/.platformio
+        key: ${{ runner.os }}-platformio
 
-      - name: Install PlatformIO
-        run: |
-          python -m pip install --upgrade pip
-          pip install platformio
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.x'
 
-      - name: Build
-        run: pio run -e ${{ matrix.environment }}
+    - name: Install PlatformIO
+      run: |
+        python -m pip install --upgrade pip
+        pip install platformio
 
-      - name: Prepare artifacts
-        run: |
-          mkdir -p artifacts
-          cp .pio/build/${{ matrix.environment }}/*.bin artifacts/ || true
-          cp .pio/build/${{ matrix.environment }}/*.elf artifacts/ || true
+    - name: Get changed files
+      id: changed-files
+      uses: tj-actions/changed-files@v39
 
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: firmware-${{ matrix.environment }}
-          path: artifacts/
-
-  release:
-    needs: build
-    runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/')
-    
-    steps:
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
+    - name: Determine affected environments
+      id: detect-envs
+      run: |
+        # Initialize empty array for affected environments
+        AFFECTED_ENVS=()
         
-      - name: Create Release
-        uses: softprops/action-gh-release@v1
-        with:
-          files: |
-            firmware-*/*
-          draft: false
-          prerelease: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # Function to check if path matches environment patterns
+        check_env() {
+          local file="$1"
+          local env="$2"
+          
+          # Add patterns specific to each environment
+          case "$env" in
+            "Heltec_v2"*)
+              [[ $file =~ "Heltec_lora32_v2" || $file =~ "examples/simple_repeater" ]] && return 0
+              ;;
+            "Heltec_v3"*)
+              [[ $file =~ "Heltec_lora32_v3" || $file =~ "examples/ping" ]] && return 0
+              ;;
+            "Xiao"*)
+              [[ $file =~ "Xiao" ]] && return 0
+              ;;
+            "LilyGo"*)
+              [[ $file =~ "LilyGo" ]] && return 0
+              ;;
+            "RAK"*)
+              [[ $file =~ "RAK" || $file =~ "nrf52" ]] && return 0
+              ;;
+          esac
+          return 1
+        }
+        
+        # Get all environments from platformio.ini
+        ENVS=$(pio project config --name-only | grep '^env:' | cut -d':' -f2)
+        
+        # Check each changed file against each environment
+        for file in ${{ steps.changed-files.outputs.all_changed_files }}; do
+          for env in $ENVS; do
+            if check_env "$file" "$env"; then
+              AFFECTED_ENVS+=("$env")
+            fi
+          done
+        done
+        
+        # If no specific environments are affected, build all
+        if [ ${#AFFECTED_ENVS[@]} -eq 0 ]; then
+          AFFECTED_ENVS=($ENVS)
+        fi
+        
+        # Remove duplicates and format for output
+        UNIQUE_ENVS=$(echo "${AFFECTED_ENVS[@]}" | tr ' ' '\n' | sort -u | tr '\n' ' ')
+        echo "affected_envs=${UNIQUE_ENVS}" >> $GITHUB_OUTPUT
+
+    - name: Build affected environments
+      run: |
+        for env in ${{ steps.detect-envs.outputs.affected_envs }}; do
+          echo "Building environment: $env"
+          pio run -e $env
+        done
+
+    - name: Prepare artifacts
+      run: |
+        mkdir -p artifacts
+        cp .pio/build/*/firmware.bin artifacts/ || true
+        cp .pio/build/*/firmware.elf artifacts/ || true
+        # Rename files to include environment name
+        cd artifacts
+        for f in firmware.*; do
+          env=$(echo $f | sed -r 's/.*build\/([^/]+)\/firmware\.(.*)/\1/')
+          ext=$(echo $f | sed -r 's/.*\.//')
+          mv "$f" "${env}_firmware.${ext}"
+        done
+
+    - name: Create Release
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: release-${{ github.sha }}
+        name: Release ${{ github.sha }}
+        files: artifacts/*
+        body: |
+          Automated build from commit ${{ github.sha }}
+          
+          Affected environments:
+          ${{ steps.detect-envs.outputs.affected_envs }}
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: firmware-files
+        path: artifacts/
