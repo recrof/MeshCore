@@ -1,0 +1,119 @@
+name: PlatformIO CI/CD
+
+on:
+  push:
+    branches: [ main, master ]
+    tags:
+      - 'v*'
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0  # Fetch all history for file changes detection
+          
+      - name: Detect file changes
+        id: changes
+        uses: dorny/paths-filter@v2
+        with:
+          filters: |
+            target1:
+              - 'src/target1/**'
+              - 'platformio.ini'
+            target2:
+              - 'src/target2/**'
+              - 'platformio.ini'
+            common:
+              - 'lib/**'
+              - 'include/**'
+              - 'platformio.ini'
+
+      - id: set-matrix
+        run: |
+          ENVIRONMENTS=()
+          
+          # Check if target specific or common files changed
+          if [[ "${{ steps.changes.outputs.target1 }}" == "true" ]] || [[ "${{ steps.changes.outputs.common }}" == "true" ]]; then
+            ENVIRONMENTS+=("target1")
+          fi
+          if [[ "${{ steps.changes.outputs.target2 }}" == "true" ]] || [[ "${{ steps.changes.outputs.common }}" == "true" ]]; then
+            ENVIRONMENTS+=("target2")
+          fi
+          
+          # If no specific changes detected, build all targets
+          if [ ${#ENVIRONMENTS[@]} -eq 0 ]; then
+            ENVIRONMENTS=("target1" "target2")
+          fi
+          
+          echo "matrix=$(json_array "${ENVIRONMENTS[@]}")" >> $GITHUB_OUTPUT
+
+  build:
+    needs: detect-changes
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        environment: ${{fromJson(needs.detect-changes.outputs.matrix)}}
+
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Cache PlatformIO
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.platformio
+            .pio
+          key: ${{ runner.os }}-pio-${{ hashFiles('**/platformio.ini') }}
+          restore-keys: |
+            ${{ runner.os }}-pio-
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.x'
+
+      - name: Install PlatformIO
+        run: |
+          python -m pip install --upgrade pip
+          pip install platformio
+
+      - name: Build
+        run: pio run -e ${{ matrix.environment }}
+
+      - name: Prepare artifacts
+        run: |
+          mkdir -p artifacts
+          cp .pio/build/${{ matrix.environment }}/*.bin artifacts/
+          cp .pio/build/${{ matrix.environment }}/*.elf artifacts/
+          # Add any other files you want to include in the release
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: firmware-${{ matrix.environment }}
+          path: artifacts/
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v3
+        
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            firmware-*/*
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
