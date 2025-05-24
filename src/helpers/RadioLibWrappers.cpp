@@ -12,7 +12,7 @@ static volatile uint8_t state = STATE_IDLE;
 
 // this function is called when a complete packet
 // is transmitted by the module
-static 
+static
 #if defined(ESP8266) || defined(ESP32)
   ICACHE_RAM_ATTR
 #endif
@@ -124,10 +124,10 @@ static float snr_threshold[] = {
     -17.5,// SF11 needs at least -17.5 dB SNR
     -20   // SF12 needs at least -20 dB SNR
 };
-  
+
 float RadioLibWrapper::packetScoreInt(float snr, int sf, int packet_len) {
   if (sf < 7) return 0.0f;
-  
+
   if (snr < snr_threshold[sf - 7]) return 0.0f;    // Below threshold, no chance of success
 
   auto success_rate_based_on_snr = (snr - snr_threshold[sf - 7]) / 10.0;
