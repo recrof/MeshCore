@@ -1,12 +1,25 @@
 #pragma once
 
 #include "../BaseSerialInterface.h"
+#include <Arduino.h>
 #include <BLEDevice.h>
 #include <BLEServer.h>
 #include <BLEUtils.h>
 #include <BLE2902.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
+
+// arduino-esp32 3.3 (pioarduino platform 55.x, ESP-IDF 5.5) merged NimBLE into the BLE library,
+// and dropped some of the old Bluedroid-only helpers like BLESecurity::setStaticPIN().
+#if defined(ESP_ARDUINO_VERSION) && ESP_ARDUINO_VERSION >= ESP_ARDUINO_VERSION_VAL(3, 3, 0)
+  #define BLE_UNIFIED_API  1
+#endif
+
+// On chips with no Bluedroid stack (C6/H2/C5) that library binds to NimBLE, which uses
+// different callback signatures and has no per-characteristic access permissions.
+#if defined(BLE_UNIFIED_API) && defined(CONFIG_NIMBLE_ENABLED)
+  #define BLE_NIMBLE_API  1
+#endif
 
 class SerialBLEInterface : public BaseSerialInterface, BLESecurityCallbacks, BLEServerCallbacks, BLECharacteristicCallbacks {
   BLEServer *pServer;
@@ -15,6 +28,9 @@ class SerialBLEInterface : public BaseSerialInterface, BLESecurityCallbacks, BLE
   bool deviceConnected;
   bool oldDeviceConnected;
   bool _isEnabled;
+#ifdef BLE_NIMBLE_API
+  bool _peer_authenticated;
+#endif
   uint16_t last_conn_id;
   uint32_t _pin_code;
   unsigned long _last_write;
@@ -40,16 +56,30 @@ protected:
   void onPassKeyNotify(uint32_t pass_key) override;
   bool onConfirmPIN(uint32_t pass_key) override;
   bool onSecurityRequest() override;
+#ifdef BLE_NIMBLE_API
+  void onAuthenticationComplete(ble_gap_conn_desc* desc) override;
+#else
   void onAuthenticationComplete(esp_ble_auth_cmpl_t cmpl) override;
+#endif
 
   // BLEServerCallbacks methods
   void onConnect(BLEServer* pServer) override;
+  void onDisconnect(BLEServer* pServer) override;
+#ifdef BLE_NIMBLE_API
+  void onConnect(BLEServer* pServer, ble_gap_conn_desc* desc) override;
+  void onDisconnect(BLEServer* pServer, ble_gap_conn_desc* desc) override;
+  void onMtuChanged(BLEServer* pServer, ble_gap_conn_desc* desc, uint16_t mtu) override;
+#else
   void onConnect(BLEServer* pServer, esp_ble_gatts_cb_param_t *param) override;
   void onMtuChanged(BLEServer* pServer, esp_ble_gatts_cb_param_t* param) override;
-  void onDisconnect(BLEServer* pServer) override;
+#endif
 
   // BLECharacteristicCallbacks methods
+#ifdef BLE_NIMBLE_API
+  void onWrite(BLECharacteristic* pCharacteristic, ble_gap_conn_desc* desc) override;
+#else
   void onWrite(BLECharacteristic* pCharacteristic, esp_ble_gatts_cb_param_t* param) override;
+#endif
 
 public:
   SerialBLEInterface() {
@@ -57,6 +87,9 @@ public:
     pService = NULL;
     deviceConnected = false;
     oldDeviceConnected = false;
+#ifdef BLE_NIMBLE_API
+    _peer_authenticated = false;
+#endif
     adv_restart_time = 0;
     _isEnabled = false;
     _last_write = 0;

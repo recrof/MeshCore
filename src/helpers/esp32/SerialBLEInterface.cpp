@@ -1,5 +1,8 @@
 #include "SerialBLEInterface.h"
 #include "esp_mac.h"
+#ifdef BLE_NIMBLE_API
+  #include <host/ble_store.h>
+#endif
 
 // See the following for generating UUIDs:
 // https://www.uuidgenerator.net/
@@ -28,9 +31,23 @@ void SerialBLEInterface::begin(const char* prefix, char* name, uint32_t pin_code
   BLEDevice::setSecurityCallbacks(this);
   BLEDevice::setMTU(MAX_FRAME_SIZE);
 
+#ifdef BLE_UNIFIED_API
+  // setStaticPIN() is gone in arduino-esp32 3.3, so do here what it used to do
+  BLESecurity::setPassKey(true, pin_code);
+  BLESecurity::setCapability(ESP_IO_CAP_OUT);
+  BLESecurity::setKeySize();
+  BLESecurity::setInitEncryptionKey(ESP_BLE_ENC_KEY_MASK | ESP_BLE_ID_KEY_MASK);
+  BLESecurity::setAuthenticationMode(ESP_LE_AUTH_REQ_SC_MITM_BOND);
+
+  // ..and don't send an unsolicited SMP security request on every connect (which this
+  // library does by default): let the client start pairing when it first touches a
+  // protected attribute, the way the Bluedroid build did.
+  BLESecurity::setForceAuthentication(false);
+#else
   BLESecurity  sec;
   sec.setStaticPIN(pin_code);
   sec.setAuthenticationMode(ESP_LE_AUTH_REQ_SC_MITM_BOND);
+#endif
 
   //BLEDevice::setPower(ESP_PWR_LVL_N8);
 
@@ -42,6 +59,19 @@ void SerialBLEInterface::begin(const char* prefix, char* name, uint32_t pin_code
   pService = pServer->createService(SERVICE_UUID);
 
   // Create a BLE Characteristic
+#ifdef BLE_NIMBLE_API
+  // NimBLE ignores setAccessPermissions(), the encryption/MITM requirement is part of the
+  // properties instead, and it adds the 2902 (CCCD) descriptor by itself. NimBLE derives the
+  // CCCD's write permissions from these flags, so subscribing already requires an
+  // authenticated link -- that is what makes the client pair with us in the first place.
+  pTxCharacteristic = pService->createCharacteristic(CHARACTERISTIC_UUID_TX,
+      BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_READ_ENC | BLECharacteristic::PROPERTY_READ_AUTHEN
+      | BLECharacteristic::PROPERTY_NOTIFY);
+
+  BLECharacteristic * pRxCharacteristic = pService->createCharacteristic(CHARACTERISTIC_UUID_RX,
+      BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_WRITE_ENC | BLECharacteristic::PROPERTY_WRITE_AUTHEN);
+  pRxCharacteristic->setCallbacks(this);
+#else
   pTxCharacteristic = pService->createCharacteristic(CHARACTERISTIC_UUID_TX, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY);
   pTxCharacteristic->setAccessPermissions(ESP_GATT_PERM_READ_ENC_MITM);
   pTxCharacteristic->addDescriptor(new BLE2902());
@@ -49,6 +79,7 @@ void SerialBLEInterface::begin(const char* prefix, char* name, uint32_t pin_code
   BLECharacteristic * pRxCharacteristic = pService->createCharacteristic(CHARACTERISTIC_UUID_RX, BLECharacteristic::PROPERTY_WRITE);
   pRxCharacteristic->setAccessPermissions(ESP_GATT_PERM_WRITE_ENC_MITM);
   pRxCharacteristic->setCallbacks(this);
+#endif
 
   pServer->getAdvertising()->addServiceUUID(SERVICE_UUID);
 }
@@ -74,6 +105,38 @@ bool SerialBLEInterface::onSecurityRequest() {
   return true;  // allow
 }
 
+#ifdef BLE_NIMBLE_API
+
+// Connection parameters to ask the client for once we are paired. NimBLE, unlike Bluedroid,
+// asks for nothing by default and just lives with whatever the central picked, which can be
+// several times slower than this.
+#define BLE_MIN_CONN_INTERVAL   12    // x 1.25ms = 15ms
+#define BLE_MAX_CONN_INTERVAL   24    // x 1.25ms = 30ms
+#define BLE_SLAVE_LATENCY        0    // don't skip connection events
+#define BLE_CONN_SUP_TIMEOUT   300    // x 10ms = 3s
+
+// Data length extension: without it every notification is split into 27 byte link layer
+// packets, so a full frame costs ~7 connection events instead of 1
+#define BLE_DLE_MAX_TX_OCTETS  251
+#define BLE_DLE_MAX_TX_TIME_US 2120
+
+void SerialBLEInterface::onAuthenticationComplete(ble_gap_conn_desc* desc) {
+  if (desc != NULL && desc->sec_state.encrypted) {
+    BLE_DEBUG_PRINTLN(" - SecurityCallback - Authentication Success");
+    deviceConnected = true;
+    _peer_authenticated = true;
+
+    pServer->requestConnParams(desc->conn_handle, BLE_MIN_CONN_INTERVAL, BLE_MAX_CONN_INTERVAL,
+                               BLE_SLAVE_LATENCY, BLE_CONN_SUP_TIMEOUT);
+    ble_gap_set_data_len(desc->conn_handle, BLE_DLE_MAX_TX_OCTETS, BLE_DLE_MAX_TX_TIME_US);
+  } else {
+    BLE_DEBUG_PRINTLN(" - SecurityCallback - Authentication Failure*");
+
+    pServer->disconnect(desc == NULL ? last_conn_id : desc->conn_handle);
+    adv_restart_time = millis() + ADVERT_RESTART_DELAY;
+  }
+}
+#else
 void SerialBLEInterface::onAuthenticationComplete(esp_ble_auth_cmpl_t cmpl) {
   if (cmpl.success) {
     BLE_DEBUG_PRINTLN(" - SecurityCallback - Authentication Success");
@@ -86,12 +149,36 @@ void SerialBLEInterface::onAuthenticationComplete(esp_ble_auth_cmpl_t cmpl) {
     adv_restart_time = millis() + ADVERT_RESTART_DELAY;
   }
 }
+#endif
 
 // -------- BLEServerCallbacks methods
 
 void SerialBLEInterface::onConnect(BLEServer* pServer) {
 }
 
+#ifdef BLE_NIMBLE_API
+void SerialBLEInterface::onConnect(BLEServer* pServer, ble_gap_conn_desc* desc) {
+  BLE_DEBUG_PRINTLN("onConnect(), conn_id=%d, mtu=%d", desc->conn_handle, pServer->getPeerMTU(desc->conn_handle));
+  last_conn_id = desc->conn_handle;
+}
+
+void SerialBLEInterface::onMtuChanged(BLEServer* pServer, ble_gap_conn_desc* desc, uint16_t mtu) {
+  BLE_DEBUG_PRINTLN("onMtuChanged(), mtu=%d", mtu);
+}
+
+void SerialBLEInterface::onDisconnect(BLEServer* pServer, ble_gap_conn_desc* desc) {
+  // If the peer never reached an encrypted link, it may be that we still hold a bond that it
+  // has forgotten. NimBLE then rejects protected attributes with "insufficient encryption"
+  // instead of "insufficient authentication" (see ble_att_svr_check_perms()), and the client
+  // never starts pairing, so we would be stuck like this forever. Drop the stale bond, which
+  // lets the next attempt pair from scratch.
+  if (!_peer_authenticated && desc != NULL) {
+    BLE_DEBUG_PRINTLN("onDisconnect(), never authenticated -> dropping any stale bond");
+    ble_store_util_delete_peer(&desc->peer_id_addr);
+  }
+  _peer_authenticated = false;
+}
+#else
 void SerialBLEInterface::onConnect(BLEServer* pServer, esp_ble_gatts_cb_param_t *param) {
   BLE_DEBUG_PRINTLN("onConnect(), conn_id=%d, mtu=%d", param->connect.conn_id, pServer->getPeerMTU(param->connect.conn_id));
   last_conn_id = param->connect.conn_id;
@@ -100,6 +187,7 @@ void SerialBLEInterface::onConnect(BLEServer* pServer, esp_ble_gatts_cb_param_t 
 void SerialBLEInterface::onMtuChanged(BLEServer* pServer, esp_ble_gatts_cb_param_t* param) {
   BLE_DEBUG_PRINTLN("onMtuChanged(), mtu=%d", pServer->getPeerMTU(param->mtu.conn_id));
 }
+#endif
 
 void SerialBLEInterface::onDisconnect(BLEServer* pServer) {
   BLE_DEBUG_PRINTLN("onDisconnect()");
@@ -111,7 +199,11 @@ void SerialBLEInterface::onDisconnect(BLEServer* pServer) {
 
 // -------- BLECharacteristicCallbacks methods
 
+#ifdef BLE_NIMBLE_API
+void SerialBLEInterface::onWrite(BLECharacteristic* pCharacteristic, ble_gap_conn_desc* desc) {
+#else
 void SerialBLEInterface::onWrite(BLECharacteristic* pCharacteristic, esp_ble_gatts_cb_param_t* param) {
+#endif
   uint8_t* rxValue = pCharacteristic->getData();
   int len = pCharacteristic->getLength();
 
