@@ -128,6 +128,45 @@ bool CommonRadioPrefs::handleCommand(const char* command, uint32_t sender_timest
     return true;
   }
 
+  if (strcmp(command, "get radio.xtrim") == 0) {
+    uint8_t xta, xtb;
+    if (radio_driver.getXtalTrim(xta, xtb)) {
+      sprintf(reply, "> %d,%d", (uint32_t)xta, (uint32_t)xtb);
+    } else {
+      strcpy(reply, "> default");
+    }
+    return true;
+  }
+  if (memcmp(command, "set radio.xtrim ", 16) == 0) {
+    char tmp[32];
+    StrHelper::strncpy(tmp, &command[16], sizeof(tmp));
+    uint8_t xta, xtb;
+    if (strcmp(tmp, "default") == 0) {
+      xta = xtb = 0xFF;
+    } else {
+      const char *parts[2];
+      int num = mesh::Utils::parseTextParts(tmp, parts, 2);
+      int a = num > 0 ? atoi(parts[0]) : -1;
+      int b = num > 1 ? atoi(parts[1]) : a;   // single value applies to both XTA and XTB
+      if (num < 1 || a < 0 || a > 47 || b < 0 || b > 47) {
+        strcpy(reply, "Error, must be 0-47[,0-47] or default");
+        return true;
+      }
+      xta = a; xtb = b;
+    }
+    if (!radio_driver.setXtalTrim(xta, xtb)) {
+      strcpy(reply, "Error: unsupported");
+      return true;
+    }
+    setXtalTrim(xta, xtb);
+    if (xta == 0xFF && !radio_driver.getXtalTrim(xta, xtb)) {
+      strcpy(reply, "OK - reboot to apply");
+    } else {
+      strcpy(reply, "OK");
+    }
+    return true;
+  }
+
   if (memcmp(command, "get tx", 6) == 0 && (command[6] == 0 || command[6] == ' ')) {
     sprintf(reply, "> %d", (int32_t) getTxPower());
     return true;

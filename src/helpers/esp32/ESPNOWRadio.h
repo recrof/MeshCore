@@ -40,6 +40,8 @@ public:
    */
   virtual bool setRxBoostedGainMode(bool) { }
   virtual bool getRxBoostedGainMode() const { return false; }
+  virtual bool setXtalTrim(uint8_t xta, uint8_t xtb) { return false; }
+  virtual bool getXtalTrim(uint8_t& xta, uint8_t& xtb) const { return false; }
 
   uint32_t intID();
   void setTxPower(uint8_t dbm);

@@ -3,12 +3,26 @@
 #include <RadioLib.h>
 #include "MeshCore.h"
 
+// XTA/XTB crystal load capacitor trim (0..47, 0.47pF per step), only meaningful for boards without TCXO.
+// Lower values = less load capacitance = higher frequency. 0xFF = leave chip default.
+#ifndef LR2021_XOSC_TRIM_A
+  #define LR2021_XOSC_TRIM_A  0xFF
+#endif
+#ifndef LR2021_XOSC_TRIM_B
+  #define LR2021_XOSC_TRIM_B  LR2021_XOSC_TRIM_A
+#endif
+
+#define LR2021_XOSC_TRIM_MAX     47
+#define LR2021_XOSC_TRIM_UNSET   0xFF
+
 class CustomLR2021 : public LR2021 {
   uint32_t _preambleMillis = 66;
   uint32_t _maxPayloadMillis = 3934;
   uint32_t _activityAt = 0;
   bool _headerSeen = false;
   bool _rx_boosted = false;
+  uint8_t _xta = LR2021_XOSC_TRIM_A;
+  uint8_t _xtb = LR2021_XOSC_TRIM_B;
 
   public:
     CustomLR2021(Module *mod) : LR2021(mod) { irqDioNum = LR2021_IRQ_DIO; }
@@ -54,7 +68,9 @@ class CustomLR2021 : public LR2021 {
         Serial.println(status);
         return false;  // fail
       }
-    
+
+      applyXoscTrim();
+
       setCRC(2);
       explicitHeader();
 
@@ -67,6 +83,36 @@ class CustomLR2021 : public LR2021 {
     }
     
     float getFreqMHz() const { return freqMHz; }
+
+    // xta/xtb = LR2021_XOSC_TRIM_UNSET restores the build default (LR2021_XOSC_TRIM_A/B)
+    int16_t setXoscTrim(uint8_t xta, uint8_t xtb) {
+      if (xta == LR2021_XOSC_TRIM_UNSET || xtb == LR2021_XOSC_TRIM_UNSET) {
+        xta = LR2021_XOSC_TRIM_A;
+        xtb = LR2021_XOSC_TRIM_B;
+      } else if (xta > LR2021_XOSC_TRIM_MAX || xtb > LR2021_XOSC_TRIM_MAX) {
+        return RADIOLIB_ERR_UNKNOWN;
+      }
+      _xta = xta;
+      _xtb = xtb;
+      return applyXoscTrim();
+    }
+
+    bool getXoscTrim(uint8_t& xta, uint8_t& xtb) const {
+      if (_xta == LR2021_XOSC_TRIM_UNSET) return false;  // chip default
+      xta = _xta;
+      xtb = _xtb;
+      return true;
+    }
+
+    int16_t applyXoscTrim() {
+      if (_xta == LR2021_XOSC_TRIM_UNSET) return RADIOLIB_ERR_NONE;
+      int16_t status = standby(RADIOLIB_LR2021_STANDBY_RC);  // XOSC off, restarts with new caps on next FS/RX/TX
+      if (status != RADIOLIB_ERR_NONE) return status;
+      uint8_t buf[] = { (uint8_t)(_xta & 0x3F), (uint8_t)(_xtb & 0x3F) };  // omit optional XOSC start delay byte
+      status = SPIcommand(RADIOLIB_LR2021_CMD_SET_XOSC_CP_TRIM, true, buf, sizeof(buf));
+      MESH_DEBUG_PRINTLN("setXoscCpTrim(%d, %d) returned %d", _xta, _xtb, status);
+      return status;
+    }
 
     bool getRxBoostedGainMode() const { return _rx_boosted; }
 

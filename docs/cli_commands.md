@@ -277,6 +277,25 @@ This document provides an overview of CLI commands that can be sent to MeshCore 
 
 ---
 
+#### View or change the crystal load capacitor trim (LR2021 boards without TCXO)
+**Usage:**
+- `get radio.xtrim`
+- `set radio.xtrim <xta>[,<xtb>]`
+- `set radio.xtrim default`
+
+**Parameters:**
+- `xta`, `xtb`: XTA / XTB pin load capacitor trim, `0`-`47` (0.47pF per step). If `xtb` is omitted, the same value is used for both pins.
+
+**Default:** `default` (chip or board default)
+
+**Notes:**
+- Corrects a constant frequency offset caused by the crystal. Lower values raise the frequency, higher values lower it.
+- Applied immediately, so you can calibrate by watching the node's transmissions on an SDR.
+- `default` needs a reboot to apply unless the board defines its own build-time trim.
+- Does not compensate for temperature drift.
+
+---
+
 #### View or change the LoRa FEM receive-path gain state on supported boards
 **Usage:**
 - `get radio.fem.rxgain`

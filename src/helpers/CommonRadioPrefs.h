@@ -62,6 +62,10 @@ public:
   virtual uint8_t getFEMTxGain() const = 0;
   virtual void setFEMTxGain(uint8_t g) = 0;
 
+  virtual uint8_t getXtalTrimA() const = 0;
+  virtual uint8_t getXtalTrimB() const = 0;
+  virtual void setXtalTrim(uint8_t xta, uint8_t xtb) = 0;
+
   bool handleCommand(const char* command, uint32_t sender_timestamp, char* reply);
 
   bool setByKey(const char* key, const char* value) override;   // for dynamic key/value access

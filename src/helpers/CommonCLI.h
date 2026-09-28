@@ -72,6 +72,8 @@ public:
   uint8_t loop_detect = 0;
   uint8_t cad_enabled = 0;      // hardware Channel Activity Detection before TX (boolean)
   uint8_t extra_sf[4];
+  uint8_t xtal_trim_a = 0xFF;   // crystal load cap trim, 0xFF = default
+  uint8_t xtal_trim_b = 0xFF;
 
 private:
   class RadioPrefs : public CommonRadioPrefs {
@@ -95,6 +97,8 @@ private:
       def("agc_int", _parent->agc_reset_interval);
       def("hash_mode", _parent->path_hash_mode);
       def("multi_ack", _parent->multi_acks);
+      def("xtrim_a", _parent->xtal_trim_a);
+      def("xtrim_b", _parent->xtal_trim_b);
     }
   public:
     RadioPrefs(NodePrefs* parent) : _parent(parent) { }
@@ -133,6 +137,9 @@ private:
     void setFEMRxGain(uint8_t g) override { _parent->radio_fem_rxgain = g; markDirty(); }
     uint8_t getFEMTxGain() const override { return _parent->radio_fem_txgain; }
     void setFEMTxGain(uint8_t g) override { _parent->radio_fem_txgain = g; markDirty(); }
+    uint8_t getXtalTrimA() const override { return _parent->xtal_trim_a; }
+    uint8_t getXtalTrimB() const override { return _parent->xtal_trim_b; }
+    void setXtalTrim(uint8_t xta, uint8_t xtb) override { _parent->xtal_trim_a = xta; _parent->xtal_trim_b = xtb; markDirty(); }
   };
   RadioPrefs radio;
 

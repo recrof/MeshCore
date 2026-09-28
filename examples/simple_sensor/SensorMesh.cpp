@@ -771,6 +771,7 @@ void SensorMesh::begin(FILESYSTEM* fs) {
 
   radio_driver.setParams(_prefs.freq, _prefs.bw, _prefs.sf, _prefs.cr);
   radio_driver.setTxPower(_prefs.tx_power_dbm);
+  if (_prefs.xtal_trim_a != 0xFF) radio_driver.setXtalTrim(_prefs.xtal_trim_a, _prefs.xtal_trim_b);
 
   board.attachDynamicPrefs(_prefs.getCustom());
 

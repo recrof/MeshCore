@@ -77,6 +77,10 @@ public:
 
   virtual bool setRxBoostedGainMode(bool) { return false; }
   virtual bool getRxBoostedGainMode() const { return false; }
+
+  // crystal load capacitor trim (XTAL boards only), 0xFF = default
+  virtual bool setXtalTrim(uint8_t xta, uint8_t xtb) { return false; }
+  virtual bool getXtalTrim(uint8_t& xta, uint8_t& xtb) const { return false; }
   
   virtual bool configSideDetectors(const uint8_t sideDetSFs[], uint8_t num, float bw) { return false; }
 };

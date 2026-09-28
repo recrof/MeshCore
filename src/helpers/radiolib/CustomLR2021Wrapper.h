@@ -104,7 +104,22 @@ public:
     return ((CustomLR2021 *)_radio)->getRxBoostedGainMode();
   }
 
+  bool setXtalTrim(uint8_t xta, uint8_t xtb) override {
+    int16_t status = ((CustomLR2021 *)_radio)->setXoscTrim(xta, xtb);
+    RadioLibWrapper::idle(); // trigger startReceive()
+    return status == RADIOLIB_ERR_NONE;
+  }
+
+  bool getXtalTrim(uint8_t& xta, uint8_t& xtb) const override {
+    return ((CustomLR2021 *)_radio)->getXoscTrim(xta, xtb);
+  }
+
   protected:
+    void doResetAGC() override {
+      RadioLibWrapper::doResetAGC();
+      ((CustomLR2021 *)_radio)->applyXoscTrim();  // trim is not guaranteed to survive retention sleep
+    }
+
     LR2021LoRaSideDetector_t _sideDet[3];
     size_t _numSideDet = 0;
 
