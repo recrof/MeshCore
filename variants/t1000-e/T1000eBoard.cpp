@@ -70,17 +70,23 @@ bool T1000eBoard::handleCommand(const char* command, uint32_t sender_timestamp, 
   }
   if (memcmp(command, "set buzzer ", 11) == 0) {
     if (strcmp(&command[11], "on") == 0) {
-      _buzzer_mute_pending = false;
-      setBuzzerEnabled(true);
-      if (_prefs) _prefs->setByKey("buzzer", "1");
-      playTune("MsgRcv3:d=4,o=6,b=200:32e,32g,32b,16c7");  // same tune as a new message
-      strcpy(reply, "OK - buzzer on");
+      if (_prefs && !_prefs->setByKey("buzzer", "1")) {
+        strcpy(reply, "Error: failed to save buzzer setting");
+      } else {
+        _buzzer_mute_pending = false;
+        setBuzzerEnabled(true);
+        playTune("MsgRcv3:d=4,o=6,b=200:32e,32g,32b,16c7");  // same tune as a new message
+        strcpy(reply, "OK - buzzer on");
+      }
     } else if (strcmp(&command[11], "off") == 0) {
-      setBuzzerEnabled(true);
-      _buzzer_mute_pending = true;
-      if (_prefs) _prefs->setByKey("buzzer", "0");
-      playTune("ack:d=32,o=8,b=120:c");  // same beep as an ack, before going quiet
-      strcpy(reply, "OK - buzzer off");
+      if (_prefs && !_prefs->setByKey("buzzer", "0")) {
+        strcpy(reply, "Error: failed to save buzzer setting");
+      } else {
+        setBuzzerEnabled(true);
+        _buzzer_mute_pending = true;
+        playTune("ack:d=32,o=8,b=120:c");  // same beep as an ack, before going quiet
+        strcpy(reply, "OK - buzzer off");
+      }
     } else {
       strcpy(reply, "Error: state must be on or off");
     }
