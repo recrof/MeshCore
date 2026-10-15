@@ -31,7 +31,7 @@ void T1000eBoard::attachDynamicPrefs(KeyValueStore* prefs) {
 #ifdef PIN_BUZZER_EN
   char val[8];
   val[0] = 0;
-  _prefs->getByKey("buzzer", val, sizeof(val));
+  _prefs->getByKey("buzzer", val, sizeof(val) - 1);
   _buzzer_muted = strcmp(val, "0") == 0;
 #endif
 }
