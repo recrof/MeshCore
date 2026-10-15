@@ -7,10 +7,18 @@
 class T1000eBoard : public NRF52BoardDCDC {
 protected:
   uint8_t btn_prev_state;
+  KeyValueStore* _prefs = NULL;
+  bool _buzzer_muted = false;
+  bool _buzzer_mute_pending = false;
+
+  void setBuzzerEnabled(bool enable);
 
 public:
   T1000eBoard() : NRF52Board("T1000E_OTA") {}
   void begin();
+  void attachDynamicPrefs(KeyValueStore* prefs);
+  bool handleCommand(const char* command, uint32_t sender_timestamp, char* reply) override;
+  void loop() override;
 
   uint16_t getBattMilliVolts() override {
   #ifdef BATTERY_PIN
