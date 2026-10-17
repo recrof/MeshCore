@@ -295,7 +295,7 @@ public:
       #ifdef UI_SHOW_CLOCK
       display.setTextSize(3);
       uint32_t now = _rtc->getCurrentTime();
-      now += (int32_t)_node_prefs->tz_offset * 3600;
+      now += (int32_t)(_node_prefs->tz_offset * 3600);
       DateTime dt (now);
       sprintf(tmp, "%02d:%02d", dt.hour(), dt.minute());
       display.drawTextCentered(display.width() / 2, 60, tmp);
