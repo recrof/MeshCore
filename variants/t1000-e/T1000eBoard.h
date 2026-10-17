@@ -9,7 +9,6 @@ protected:
   uint8_t btn_prev_state;
   KeyValueStore* _prefs = NULL;
   bool _buzzer_muted = false;
-  bool _buzzer_mute_pending = false;
 
   void setBuzzerEnabled(bool enable);
 
