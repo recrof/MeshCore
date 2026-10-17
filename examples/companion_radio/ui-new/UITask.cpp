@@ -93,7 +93,7 @@ class HomeScreen : public UIScreen {
     RADIO,
 #ifdef BLE_PIN_CODE
     BLUETOOTH,
-# endif
+#endif
     ADVERT,
 #if ENV_INCLUDE_GPS == 1
     GPS,
