@@ -27,6 +27,7 @@ public:
   virtual void turnOn() = 0;
   virtual void turnOff() = 0;
   virtual void clear() = 0;
+  virtual void blankScreen() {} // to cleanly erase screen before turning off
   virtual void startFrame(ColorVal bkg = UIColor::window_bkg) = 0;
   virtual void setTextSize(int sz) = 0;
   virtual void setColor(ColorVal c) = 0;

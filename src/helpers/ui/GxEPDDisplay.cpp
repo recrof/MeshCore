@@ -82,13 +82,17 @@ void GxEPDDisplay::turnOff() {
   expander.digitalWrite(EXP_PIN_BACKLIGHT, LOW);
 #endif
   _isOn = false;
+  last_display_crc_value=0;
+  display.hibernate();
+}
+
+void GxEPDDisplay::blankScreen() {
   // do full refresh before powering off to clear screen
   // no full refresh needed at wakeup
   display.clearScreen(0xFF); // Clears microcontroller side RAM
   display.writeScreenBuffer(0xFF); // Forces 0xFF (White) into the display controller's history registers
   resetPartialRefreshCounter();
   last_display_crc_value=0;
-  display.hibernate();
 }
 
 void GxEPDDisplay::clear() {

@@ -61,6 +61,7 @@ public:
   void turnOn() override;
   void turnOff() override;
   void clear() override;
+  void blankScreen() override;
   void startFrame(ColorVal bkg = UIColor::window_bkg) override;
   void setTextSize(int sz) override;
   void setColor(ColorVal c) override;
