@@ -955,7 +955,9 @@ void UITask::loop() {
   if (ev == BUTTON_EVENT_CLICK) {
     c = checkDisplayOn(KEY_ENTER);
   } else if (ev == BUTTON_EVENT_LONG_PRESS) {
+    display.blankScreen();
     display.turnOff();
+    display.powerOff();
   } else if (ev == BUTTON_EVENT_DOUBLE_CLICK) {
     c = handleDoubleClick(KEY_SELECT);
   } else if (ev == BUTTON_EVENT_TRIPLE_CLICK) {
@@ -1016,6 +1018,7 @@ void UITask::loop() {
     } else if (bev == BUTTON_EVENT_TRIPLE_CLICK) {
       _display->blankScreen();
       _display->turnOff();
+      _display->powerOff();
       backlight_btn_pressed_at = 0;
     }
 #if defined(DISP_BACKLIGHT)
@@ -1073,7 +1076,8 @@ void UITask::loop() {
     if (millis() > _auto_off) {
         #ifdef EINK_SCREENOFF_BLANK
         if (curr != msg_preview) { // don't blank if messages are waiting
-          display.blankScreen();
+          _display->blankScreen();
+          _display->powerOff();
         }
         #endif
       _display->turnOff();

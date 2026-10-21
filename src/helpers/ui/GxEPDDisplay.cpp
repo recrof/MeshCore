@@ -75,7 +75,11 @@ void GxEPDDisplay::turnOn() {
   }
 }
 
-void GxEPDDisplay::turnOff() {
+void GxEPDDisplay::powerOff() {
+  display.hibernate();
+}
+
+void GxEPDDisplay::turnOff() { // Only stops refresh
 #if defined(DISP_BACKLIGHT) && !defined(BACKLIGHT_BTN)
   digitalWrite(DISP_BACKLIGHT, LOW);
 #elif defined(EXP_PIN_BACKLIGHT) && !defined(BACKLIGHT_BTN)
@@ -83,7 +87,6 @@ void GxEPDDisplay::turnOff() {
 #endif
   _isOn = false;
   last_display_crc_value=0;
-  display.hibernate();
 }
 
 void GxEPDDisplay::blankScreen() {
