@@ -908,9 +908,11 @@ void UITask::shutdown(bool restart){
   if (restart) {
     _board->reboot();
   } else {
-    display.forceFullRefresh();
-    display.clear();
-    display.endFrame();
+    if (_display->isEink()) {
+      _display->blankScreen();
+      _display->turnOff();
+      _display->powerOff();
+    }
     // Power off board including radio, display, GPS and components
     _board->powerOff();
   }
