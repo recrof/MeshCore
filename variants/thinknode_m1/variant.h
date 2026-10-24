@@ -131,6 +131,11 @@ extern const int SCK;
 #define DISP_BUSY               (3)
 #define DISP_BACKLIGHT          (43)
 
+#define PIN_DISPLAY_CS DISP_CS
+#define PIN_DISPLAY_DC DISP_DC
+#define PIN_DISPLAY_RST DISP_RST
+#define PIN_DISPLAY_BUSY DISP_BUSY
+
 ////////////////////////////////////////////////////////////////////////////////
 // GPS
 
